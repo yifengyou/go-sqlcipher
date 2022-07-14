@@ -4,6 +4,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
+//go:build cgo
 // +build cgo
 
 package sqlite3
@@ -1045,6 +1046,10 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 
 	// SQLCipher PRAGMA's
 	pragmaKey := ""
+	pragmaCipherHmacAlogrithm := ""
+	pragmaCipherKdfAlgorithm := ""
+	pragmaCipherUseHmac := ""
+	pragmaKdfIter := -1
 	pragmaCipherPageSize := -1
 
 	pos := strings.IndexRune(dsn, '?')
@@ -1373,18 +1378,37 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 			vfsName = val
 		}
 
-		// _pragma_key
 		if val := params.Get("_pragma_key"); val != "" {
 			pragmaKey = val
+			fmt.Println("PRAGMA key=", pragmaKey)
 		}
-
-		// _pragma_cipher_page_size
 		if val := params.Get("_pragma_cipher_page_size"); val != "" {
 			pageSize, err := strconv.Atoi(val)
 			if err != nil {
 				return nil, fmt.Errorf("sqlite3: _pragma_cipher_page_size cannot be parsed: %s", err)
 			}
 			pragmaCipherPageSize = pageSize
+			fmt.Println("PRAGMA cipher_page_size=", pragmaKdfIter)
+		}
+		if val := params.Get("_pragma_cipher_use_hmac"); val != "" {
+			pragmaCipherUseHmac = val
+			fmt.Println("PRAGMA cipher_use_hmac=", pragmaCipherUseHmac)
+		}
+		if val := params.Get("_pragma_cipher_kdf_algorithm"); val != "" {
+			pragmaCipherKdfAlgorithm = val
+			fmt.Println("PRAGMA cipher_kdf_algorithm=", pragmaCipherKdfAlgorithm)
+		}
+		if val := params.Get("_pragma_cipher_hmac_algorithm"); val != "" {
+			pragmaCipherHmacAlogrithm = val
+			fmt.Println("PRAGMA cipher_hmac_algorithm=", pragmaCipherHmacAlogrithm)
+		}
+		if val := params.Get("_pragma_kdf_iter"); val != "" {
+			kdfiter, err := strconv.Atoi(val)
+			if err != nil {
+				return nil, fmt.Errorf("sqlite3: _pragma_kdf_iter cannot be parsed: %s", err)
+			}
+			pragmaKdfIter = kdfiter
+			fmt.Println("PRAGMA kdf_iter=", pragmaKdfIter)
 		}
 
 		if !strings.HasPrefix(dsn, "file:") {
@@ -1432,7 +1456,6 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 		return nil
 	}
 
-	// _pragma_key
 	if pragmaKey != "" {
 		query := fmt.Sprintf("PRAGMA key = \"%s\";", pragmaKey)
 		if err := exec(query); err != nil {
@@ -1440,8 +1463,35 @@ func (d *SQLiteDriver) Open(dsn string) (driver.Conn, error) {
 			return nil, err
 		}
 	}
-
-	// _pragma_cipher_page_size
+	if pragmaCipherUseHmac != "" {
+		query := fmt.Sprintf("PRAGMA cipher_use_hmac = \"%s\";", pragmaCipherUseHmac)
+		if err := exec(query); err != nil {
+			C.sqlite3_close_v2(db)
+			return nil, err
+		}
+	}
+	if pragmaCipherKdfAlgorithm != "" {
+		query := fmt.Sprintf("PRAGMA cipher_kdf_algorithm = \"%s\";", pragmaCipherKdfAlgorithm)
+		if err := exec(query); err != nil {
+			C.sqlite3_close_v2(db)
+			return nil, err
+		}
+	}
+	if pragmaCipherHmacAlogrithm != "" {
+		query := fmt.Sprintf("PRAGMA cipher_hmac_algorithm = \"%s\";", pragmaCipherHmacAlogrithm)
+		if err := exec(query); err != nil {
+			C.sqlite3_close_v2(db)
+			return nil, err
+		}
+	}
+	if pragmaKdfIter != -1 {
+		query := fmt.Sprintf("PRAGMA kdf_iter = %d;",
+			pragmaKdfIter)
+		if err := exec(query); err != nil {
+			C.sqlite3_close_v2(db)
+			return nil, err
+		}
+	}
 	if pragmaCipherPageSize != -1 {
 		query := fmt.Sprintf("PRAGMA cipher_page_size = %d;",
 			pragmaCipherPageSize)
